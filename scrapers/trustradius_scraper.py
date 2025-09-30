@@ -11,33 +11,35 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 from datetime import datetime
 import time
 from dateutil import parser as date_parser
+from dateutil import parser as date_parser
 
-def setup_driver():
+def setup_driver(no_headless=False):
     """Set up Chrome driver with options to mimic real browser."""
     options = Options()
-    options.add_argument("--headless")  # Run in background
+    if not no_headless:
+        options.add_argument("--headless")  # Run in background
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
+    options.binary_location = "C:\\chrome-win64\\chrome.exe"
     
-    service = Service(ChromeDriverManager().install())
+    service = Service(executable_path="E:\\Assignment_data\\review scraper\\drivers\\chromedriver-win64\\chromedriver.exe")
     driver = webdriver.Chrome(service=service, options=options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver
 
-def scrape_trustradius_reviews(company, start_date, end_date):
+def scrape_trustradius_reviews(company, start_date, end_date, no_headless=False):
     """Scrape TrustRadius reviews for the company within date range."""
     slug = company.lower().replace(" ", "-")
     url = f"https://www.trustradius.com/products/{slug}/reviews"
     
-    driver = setup_driver()
+    driver = setup_driver(no_headless=no_headless)
     reviews = []
     
     try:
