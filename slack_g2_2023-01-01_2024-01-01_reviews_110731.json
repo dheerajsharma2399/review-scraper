@@ -1,0 +1,15 @@
+{
+  "scraper_info": {
+    "company": "Slack",
+    "source": "g2",
+    "date_range": {
+      "start": "2023-01-01",
+      "end": "2024-01-01"
+    },
+    "total_reviews": 0,
+    "scraped_at": "2025-09-30T11:07:31.549058",
+    "debug_mode": false,
+    "quick_mode": false
+  },
+  "reviews": []
+}
