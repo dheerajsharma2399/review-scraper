@@ -5,6 +5,7 @@ Note: Selectors may need adjustment based on site changes. Anti-bot measures may
 Some content may require login; this is a basic implementation.
 """
 
+import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -27,8 +28,8 @@ def setup_driver(no_headless=False):
     options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option('useAutomationExtension', False)
-    options.binary_location = "C:\\chrome-win64\\chrome.exe"
-    
+    options.binary_location = "C:\\chrome-win64\\chrome.exe"    
+    os.environ["webdriver.chrome.driver"] = "E:\\Assignment_data\\review scraper\\drivers\\chromedriver-win64\\chromedriver.exe"
     service = Service(executable_path="E:\\Assignment_data\\review scraper\\drivers\\chromedriver-win64\\chromedriver.exe")
     driver = webdriver.Chrome(service=service, options=options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -37,13 +38,14 @@ def setup_driver(no_headless=False):
 def scrape_trustradius_reviews(company, start_date, end_date, no_headless=False):
     """Scrape TrustRadius reviews for the company within date range."""
     slug = company.lower().replace(" ", "-")
-    url = f"https://www.trustradius.com/products/{slug}/reviews"
+    url = f"https://www.trustradius.com/products/{slug}/reviews/all"
     
     driver = setup_driver(no_headless=no_headless)
     reviews = []
     
     try:
         driver.get(url)
+        time.sleep(5)
         wait = WebDriverWait(driver, 10)
         
         # Wait for reviews to load
@@ -73,6 +75,7 @@ def scrape_trustradius_reviews(company, start_date, end_date, no_headless=False)
                     }
                     
                     reviews.append(review)
+                    time.sleep(0.5)
                 except Exception as e:
                     print(f"Error extracting review: {e}")
                     continue
