@@ -18,7 +18,6 @@ This project is a command-line tool for scraping product reviews from leading Sa
 - **Merged Reporting**: Generates a consolidated report when scraping from multiple sources.
 - **Automatic Pagination**: Navigates through review pages automatically.
 - **Reliable Operation**: Features robust error handling and detailed logging.
-- **Polite Scraping**: Includes built-in delays to respect website servers.
 
 ## Project Structure
 
