@@ -1,6 +1,7 @@
 # SaaS Review Scraper
 
 A Python-based web scraper that extracts product reviews from **G2**, **Capterra**, and **TrustRadius** for a specified company and time period.
+This project is a command-line tool for scraping product reviews from leading SaaS review platforms: **G2**, **Capterra**, and **TrustRadius**. It allows you to gather reviews for a specific company within a defined date range and saves the results in a structured JSON format.
 
 ## Features
 
@@ -11,6 +12,13 @@ A Python-based web scraper that extracts product reviews from **G2**, **Capterra
 - ✅ Handles **pagination** automatically
 - ✅ Robust **error handling** and logging
 - ✅ **Rate limiting** to respect websites
+- **Multi-Source Scraping**: Collects data from G2, Capterra, and TrustRadius.
+- **Date Filtering**: Narrows down reviews to a specific start and end date.
+- **JSON Export**: Outputs clean, well-structured JSON files.
+- **Merged Reporting**: Generates a consolidated report when scraping from multiple sources.
+- **Automatic Pagination**: Navigates through review pages automatically.
+- **Reliable Operation**: Features robust error handling and detailed logging.
+- **Polite Scraping**: Includes built-in delays to respect website servers.
 
 ## Project Structure
 
@@ -19,6 +27,7 @@ saas-review-scraper/
 ├── scraper.py                  # Main entry point
 ├── scrapers/
 │   ├── __init__.py
+│   ├── __init__.py 
 │   ├── g2_scraper.py          # G2 scraping logic
 │   ├── capterra_scraper.py    # Capterra scraping logic
 │   └── trustradius_scraper.py # TrustRadius scraping logic (BONUS)
@@ -35,12 +44,15 @@ saas-review-scraper/
 ## Installation
 
 ### Prerequisites
+### Requirements
 - Python 3.8 or higher
 - pip package manager
 
 ### Setup
+### Steps
 
 1. **Clone or download the project**
+1. **Get the Code**
 ```bash
 cd saas-review-scraper
 ```
