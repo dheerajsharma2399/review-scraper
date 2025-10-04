@@ -1,5 +1,0 @@
-scraper> python main.py --company "Slack" --start "2023-01-01" --end "2024-01-01" --source "g2"
-Traceback (most recent call last):
-  File "E:\Assignment_data\review scraper\main.py", line 13, in <module>
-    from scrapers.capterra_scraper import scrape_capterra_reviews
-ImportError: cannot import name 'scrape_capterra_reviews' from 'scrapers.capterra_scraper' (E:\Assignment_data\review scraper\scrapers\capterra_scraper.py)  

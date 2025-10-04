@@ -1,93 +1,97 @@
 #!/usr/bin/env python3
-"""
-Review Scraper Script
-Scrapes product reviews from G2, Capterra, or TrustRadius for a given company and date range.
-Usage: python main.py --company "Slack" --start "2023-01-01" --end "2024-01-01" --source "g2" [--no-headless]
-"""
-
 import argparse
-import json
+import sys
+from pathlib import Path
+from typing import List, Dict, Any
 from datetime import datetime
 import os
-from scrapers.g2_scraper import scrape_g2_reviews
-from scrapers.capterra_scraper import scrape_capterra_reviews
-from scrapers.trustradius_scraper import scrape_trustradius_reviews
 
-def validate_dates(start_date, end_date):
-    """Validate date format YYYY-MM-DD and ensure start <= end."""
-    try:
-        start = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-        if start > end:
-            raise ValueError("Start date must be before or equal to end date.")
-        return start, end
-    except ValueError as e:
-        raise ValueError(f"Invalid date format. Use YYYY-MM-DD. {e}")
-
-def filter_reviews_by_date(reviews, start_date, end_date):
-    """Filter reviews within the date range."""
-    start, end = validate_dates(start_date, end_date)
-    filtered = []
-    for review in reviews:
-        if review['date'] is None:
-            continue
-        try:
-            review_date = datetime.strptime(review['date'], "%Y-%m-%d")
-            if start <= review_date <= end:
-                filtered.append(review)
-        except ValueError:
-            # Skip invalid dates
-            continue
-    return filtered
+from utils import logger as logger_module, date_utils, json_exporter
+from scrapers.g2_scraper import G2Scraper
+from scrapers.capterra_scraper import CapterraScraper
+from scrapers.trustradius_scraper import TrustRadiusScraper
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape product reviews from review sites.")
-    parser.add_argument("--company", required=True, help="Company name (e.g., Slack)")
-    parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
-    parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
-    parser.add_argument("--source", required=True, choices=["g2", "capterra", "trustradius"], help="Review source")
-    parser.add_argument("--no-headless", action="store_true", help="Run browser in non-headless mode for debugging")
-    
+    parser = argparse.ArgumentParser(description="SaaS Review Scraper")
+    parser.add_argument("--company", required=True, help="Company/product name")
+    parser.add_argument("--start-date", required=True, help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end-date", required=True, help="End date (YYYY-MM-DD)")
+    parser.add_argument("--source", required=True, help="Source(s): g2,capterra,trustradius")
+    parser.add_argument("--output-dir", default="output", help="Output directory")
+    parser.add_argument("--max-pages", type=int, default=10, help="Max pages per source")
+
     args = parser.parse_args()
-    
-    try:
-        validate_dates(args.start, args.end)
-    except ValueError as e:
-        print(f"Error: {e}")
-        return
-    
-    # Map source to scraper function
-    scrapers = {
-        "g2": scrape_g2_reviews,
-        "capterra": scrape_capterra_reviews,
-        "trustradius": scrape_trustradius_reviews,
-    }
-    
-    scraper = scrapers.get(args.source)
-    if not scraper:
-        print(f"Error: Unsupported source {args.source}")
-        return
-    
-    print(f"Scraping {args.company} reviews from {args.source.upper()}...")
-    
-    # Call scraper with no_headless flag
-    reviews = scraper(args.company, args.start, args.end, no_headless=args.no_headless)
-    
-    # Filter by date
-    reviews = filter_reviews_by_date(reviews, args.start, args.end)
-    
-    if not reviews:
-        print("No reviews found in the specified date range.")
-        reviews = []  # Ensure empty list for JSON
-    
-    # Generate output filename
-    filename = f"{args.company.lower().replace(' ', '_')}_{args.source}_{args.start}_{args.end}_reviews.json"
-    output_path = os.path.join(os.getcwd(), filename)
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump({"reviews": reviews}, f, indent=2, ensure_ascii=False)
-    
-    print(f"Reviews saved to {output_path} ({len(reviews)} reviews)")
+
+    # Setup logger
+    log = logger_module.setup_logger("scraper")
+
+    # Validate dates
+    if not date_utils.validate_date(args.start_date) or not date_utils.validate_date(args.end_date):
+        log.error("Invalid date format. Use YYYY-MM-DD.")
+        sys.exit(1)
+
+    # Parse sources
+    sources = [s.strip().lower() for s in args.source.split(",")]
+    valid_sources = {"g2", "capterra", "trustradius"}
+    invalid = set(sources) - valid_sources
+    if invalid:
+        log.error(f"Invalid sources: {invalid}. Valid: {valid_sources}")
+        sys.exit(1)
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log.info(f"Output directory: {output_dir}")
+
+    all_source_reviews = {}
+    for source in sources:
+        log.info(f"Starting scrape for {source}")
+        if source == "g2":
+            scraper = G2Scraper(log)
+            reviews, product_slug = scraper.scrape(args.company, args.start_date, args.end_date, args.max_pages)
+        elif source == "capterra":
+            scraper = CapterraScraper(log)
+            reviews, product_slug = scraper.scrape(args.company, args.start_date, args.end_date, args.max_pages)
+        elif source == "trustradius":
+            scraper = TrustRadiusScraper(log)
+            reviews, product_slug = scraper.scrape(args.company, args.start_date, args.end_date, args.max_pages)
+
+        if reviews:
+            # Add source to each review for merging
+            for review in reviews:
+                review["source"] = source
+            all_source_reviews[source] = {"reviews": reviews, "product_slug": product_slug}
+            log.info(f"Scraped {len(reviews)} reviews from {source}")
+        else:
+            log.warning(f"No reviews found for {source}")
+            all_source_reviews[source] = {"reviews": [], "product_slug": args.company.lower().replace(" ", "-")}
+
+        # Export individual
+        single_path = output_dir / f"{args.company.lower().replace(' ', '_')}_{source}_{args.start_date}_to_{args.end_date}.json"
+        json_exporter.export_single_source(
+            args.company, source, all_source_reviews[source]["product_slug"],
+            args.start_date, args.end_date, all_source_reviews[source]["reviews"], single_path
+        )
+        log.info(f"Exported {source} to {single_path}")
+
+    # Merge if multiple sources
+    if len(sources) > 1:
+        merged_reviews = []
+        reviews_by_source = {}
+        for source, data in all_source_reviews.items():
+            reviews_by_source[source] = len(data["reviews"])
+            merged_reviews.extend(data["reviews"])
+
+        merged_path = output_dir / f"{args.company.lower().replace(' ', '_')}_all_sources_{args.start_date}_to_{args.end_date}.json"
+        json_exporter.export_merged(
+            args.company, sources, args.start_date, args.end_date,
+            merged_reviews, reviews_by_source, merged_path
+        )
+        log.info(f"Exported merged to {merged_path}")
+        log.info(f"Total merged reviews: {len(merged_reviews)}")
+    else:
+        log.info("Single source, no merge needed")
+
+    log.info("Scraping completed")
 
 if __name__ == "__main__":
     main()

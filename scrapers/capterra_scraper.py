@@ -1,128 +1,134 @@
-"""
-Capterra Reviews Scraper
-Scrapes reviews from Capterra.com for a given company and date range.
-Note: Selectors may need adjustment based on site changes. Anti-bot measures may require proxies/headers.
-"""
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from datetime import datetime
 import time
-from dateutil import parser as date_parser
-from urllib.parse import urlparse
+import requests
+from bs4 import BeautifulSoup
+from typing import List, Dict, Any, Optional
+from utils import date_utils, logger
 
-def setup_driver():
-    """Set up Chrome driver with options to mimic real browser."""
-    options = Options()
-    options.add_argument("--headless")  # Run in background
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option('useAutomationExtension', False)
-    options.binary_location = "C:\\chrome-win64\\chrome.exe"
-    
-    service = Service(executable_path="E:\\Assignment_data\\review scraper\\drivers\\chromedriver-win64\\chromedriver.exe")
-    driver = webdriver.Chrome(service=service, options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    return driver
+class CapterraScraper:
+    def __init__(self, logger: logger.logging.Logger):
+        self.logger = logger
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
+            "Referer": "https://www.google.com/"
+        })
+        self.base_url = "https://www.capterra.com"
 
-def get_capterra_product_info(driver, company):
-    """Search for company on Capterra and extract product ID and slug from first result."""
-    search_url = f"https://www.capterra.com/search?type=products&query={company.replace(' ', '+')}"
-    driver.get(search_url)
-    wait = WebDriverWait(driver, 10)
-    
-    try:
-        # Wait for search results
-        first_result = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".sl-search-result-card:first-of-type a[href^='/p/']")))
-        href = first_result.get_attribute('href')
-        parsed = urlparse(href)
-        path_parts = parsed.path.split('/')
-        if len(path_parts) >= 3 and path_parts[1] == 'p':
-            product_id = path_parts[2]
-            slug = '/'.join(path_parts[3:]) if len(path_parts) > 3 else ''
-            return product_id, slug
-    except Exception as e:
-        print(f"Error finding product info for {company}: {e}")
-    return None, None
+    def _get_product_url(self, company: str) -> Optional[str]:
+        """Search for the product and get its reviews URL."""
+        search_url = f"{self.base_url}/search?query={company.replace(' ', '%20')}"
+        try:
+            response = self.session.get(search_url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            product_link = soup.find("a", class_="product-link")
+            if product_link:
+                product_url = self.base_url + product_link.get("href")
+                # Append /reviews if not present
+                if "/reviews" not in product_url:
+                    product_url += "/reviews"
+                self.logger.info(f"Found Capterra product URL: {product_url}")
+                return product_url
+            else:
+                self.logger.warning(f"No product found for {company} on Capterra")
+                return None
+        except requests.RequestException as e:
+            self.logger.error(f"Error fetching Capterra search: {e}")
+            return None
 
-def scrape_capterra_reviews(company, start_date, end_date):
-    """Scrape Capterra reviews for the company within date range."""
-    driver = setup_driver()
-    reviews = []
-    
-    product_id, slug = get_capterra_product_info(driver, company)
-    if not product_id:
-        print(f"No product found for {company} on Capterra.")
-        driver.quit()
-        return []
-    
-    url = f"https://www.capterra.com/p/{product_id}/{slug}/reviews/"
-    
-    try:
-        driver.get(url)
-        wait = WebDriverWait(driver, 10)
-        
-        # Wait for reviews to load
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".sl-review-card")))  # Capterra review card
-        
-        while True:
-            # Extract reviews from current page
-            review_elements = driver.find_elements(By.CSS_SELECTOR, ".sl-review-card")  # Capterra review cards
-            for elem in review_elements:
-                try:
-                    title = elem.find_element(By.CSS_SELECTOR, ".sl-review-card__title").text  # Capterra title
-                    description = elem.find_element(By.CSS_SELECTOR, ".sl-review-card__body").text  # Capterra description
-                    date_str = elem.find_element(By.CSS_SELECTOR, ".sl-review-card__date").text  # Capterra date
-                    date = parse_date(date_str)  # YYYY-MM-DD str or None
-                    rating = elem.find_element(By.CSS_SELECTOR, ".sl-rating__value").text  # Capterra rating
-                    reviewer = elem.find_element(By.CSS_SELECTOR, ".sl-review-card__author-name").text  # Capterra reviewer
-                    
-                    if date is None:
-                        continue  # Skip invalid dates
-                    
-                    review = {
-                        "title": title,
-                        "description": description,
-                        "date": date,
-                        "rating": rating,
-                        "reviewer_name": reviewer
-                    }
-                    
-                    reviews.append(review)
-                except Exception as e:
-                    print(f"Error extracting review: {e}")
-                    continue
-            
-            # Pagination: Check for next button
+    def _extract_review(self, review_elem: BeautifulSoup) -> Dict[str, Any]:
+        """Extract review data from HTML element."""
+        try:
+            title_elem = review_elem.find("h2", class_="review-title")
+            title = title_elem.get_text(strip=True) if title_elem else None
+
+            body_elem = review_elem.find("div", class_="review-body")
+            review_text = body_elem.get_text(strip=True) if body_elem else None
+
+            date_elem = review_elem.find("span", class_="review-date")
+            date_raw = date_elem.get_text(strip=True) if date_elem else None
+            date = date_utils.parse_date(date_raw) if date_raw else None
+
+            rating_elem = review_elem.find("div", class_="rating-stars")
+            rating_text = rating_elem.get("data-rating", None) if rating_elem else None
+            rating = float(rating_text) if rating_text else None
+
+            reviewer_elem = review_elem.find("span", class_="reviewer-name")
+            reviewer_name = reviewer_elem.get_text(strip=True) if reviewer_elem else None
+
+            verified_elem = review_elem.find("span", string="Verified")
+            verified = bool(verified_elem) if verified_elem else False
+
+            helpful_elem = review_elem.find("span", class_="helpful-count")
+            helpful_count = int(helpful_elem.get_text(strip=True)) if helpful_elem else 0
+
+            return {
+                "title": title,
+                "review": review_text,
+                "date": date,
+                "date_raw": date_raw,
+                "rating": rating,
+                "reviewer_name": reviewer_name,
+                "verified": verified,
+                "helpful_count": helpful_count
+            }
+        except Exception as e:
+            self.logger.error(f"Error extracting review: {e}")
+            return {}
+
+    def scrape(self, company: str, start_date: str, end_date: str, max_pages: int = 10) -> tuple[List[Dict[str, Any]], str]:
+        """Scrape reviews from Capterra."""
+        product_url = self._get_product_url(company)
+        if not product_url:
+            return [], ""
+
+        all_reviews = []
+        product_slug = company.lower().replace(" ", "-")
+        page = 1
+        while page <= max_pages:
+            url = f"{product_url}?page={page}"
             try:
-                next_button = driver.find_element(By.CSS_SELECTOR, ".sl-pagination__next-button")  # Capterra pagination
-                if not next_button.is_enabled():
+                response = self.session.get(url, timeout=10)
+                if response.status_code == 404:
+                    self.logger.info(f"No more pages for {company} on Capterra")
                     break
-                next_button.click()
-                time.sleep(2)  # Delay to avoid detection
-            except:
-                break
-        
-        # No post-filter; main.py handles it
-        
-    except Exception as e:
-        print(f"Error scraping Capterra: {e}")
-        reviews = []
-    finally:
-        driver.quit()
-    
-    return reviews
+                if response.status_code == 429:
+                    self.logger.warning("Rate limited, waiting 60s")
+                    time.sleep(60)
+                    continue
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, 'html.parser')
 
-def parse_date(date_str):
-    """Parse various date formats to YYYY-MM-DD."""
-    try:
-        parsed = date_parser.parse(date_str)
-        return parsed.strftime("%Y-%m-%d")
-    except ValueError:
-        return None  # Skip invalid dates
+                review_elems = soup.find_all("div", class_="review-item")
+                if not review_elems:
+                    self.logger.info(f"No reviews found on page {page}")
+                    break
+
+                for elem in review_elems:
+                    review_data = self._extract_review(elem)
+                    if review_data:
+                        all_reviews.append(review_data)
+
+                self.logger.info(f"Scraped page {page} for {company} on Capterra: {len(review_elems)} reviews")
+                page += 1
+                time.sleep(5)  # Increased rate limiting
+
+            except requests.RequestException as e:
+                self.logger.error(f"Error scraping Capterra page {page}: {e}")
+                break
+
+        # Filter by date
+        filtered_reviews = date_utils.filter_reviews_by_date(all_reviews, start_date, end_date)
+        self.logger.info(f"Filtered {len(filtered_reviews)} reviews for date range {start_date} to {end_date}")
+        return filtered_reviews, product_slug

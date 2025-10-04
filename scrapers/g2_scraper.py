@@ -1,104 +1,133 @@
-"""
-G2 Reviews Scraper
-Scrapes reviews from G2.com for a given company and date range.
-Note: Selectors may need adjustment based on site changes. Anti-bot measures may require proxies/headers.
-"""
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from datetime import datetime
 import time
-from dateutil import parser as date_parser
+import requests
+from bs4 import BeautifulSoup
+from typing import List, Dict, Any, Optional
+from utils import date_utils, logger
 
-def setup_driver(no_headless=False):
-    """Set up Chrome driver with options to mimic real browser."""
-    options = Options()
-    if not no_headless:
-        options.add_argument("--headless")  # Run in background
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.binary_location = "C:\\chrome-win64\\chrome.exe"
-    
-    service = Service(executable_path="E:\\Assignment_data\\review scraper\\drivers\\chromedriver-win64\\chromedriver.exe")
-    driver = webdriver.Chrome(service=service, options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    return driver
+class G2Scraper:
+    def __init__(self, logger: logger.logging.Logger):
+        self.logger = logger
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
+            "Referer": "https://www.google.com/"
+        })
+        self.base_url = "https://www.g2.com"
 
-def scrape_g2_reviews(company, start_date, end_date, no_headless=False):
-    """Scrape G2 reviews for the company within date range."""
-    slug = company.lower().replace(" ", "-")
-    url = f"https://www.g2.com/products/{slug}/reviews"
-    
-    driver = setup_driver(no_headless=no_headless)
-    reviews = []
-    
-    try:
-        driver.get(url)
-        wait = WebDriverWait(driver, 10)
-        
-        # Wait for reviews to load
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".oc-product-review-card")))  # G2 review card
-        # Scroll to load more if lazy-loaded
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)
-        
-        while True:
-            # Extract reviews from current page
-            review_elements = driver.find_elements(By.CSS_SELECTOR, ".oc-product-review-card")  # G2 review cards
-            for elem in review_elements:
-                try:
-                    title = elem.find_element(By.CSS_SELECTOR, ".pros-cons-review__title-text").text  # G2 title
-                    description = elem.find_element(By.CSS_SELECTOR, ".pros-cons-review__body").text  # G2 description
-                    date_str = elem.find_element(By.CSS_SELECTOR, '[data-testid="review-date"] .text').text  # G2 date
-                    # Parse date to YYYY-MM-DD if needed
-                    date = parse_date(date_str)  # Implement parse_date
-                    rating = elem.find_element(By.CSS_SELECTOR, ".review-rating .count").text  # G2 rating
-                    reviewer = elem.find_element(By.CSS_SELECTOR, ".reviewer-name").text  # G2 reviewer
-                    
-                    review = {
-                        "title": title,
-                        "description": description,
-                        "date": date,  # Now YYYY-MM-DD str
-                        "rating": rating,
-                        "reviewer_name": reviewer
-                    }
-                    
-                    reviews.append(review)
-                except Exception as e:
-                    print(f"Error extracting review: {e}")
-                    continue
-            
-            # Pagination: Check for next button
+    def _get_product_url(self, company: str) -> Optional[str]:
+        """Search for the product and get its reviews URL."""
+        search_url = f"{self.base_url}/search?query={company.replace(' ', '%20')}"
+        try:
+            response = self.session.get(search_url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            product_link = soup.find("a", {"data-testid": "product-card-link"})
+            if product_link:
+                product_url = self.base_url + product_link.get("href")
+                # Append /reviews if not present
+                if "/reviews" not in product_url:
+                    product_url += "/reviews"
+                self.logger.info(f"Found G2 product URL: {product_url}")
+                return product_url
+            else:
+                self.logger.warning(f"No product found for {company} on G2")
+                return None
+        except requests.RequestException as e:
+            self.logger.error(f"Error fetching G2 search: {e}")
+            return None
+
+    def _extract_review(self, review_elem: BeautifulSoup) -> Dict[str, Any]:
+        """Extract review data from HTML element."""
+        try:
+            title_elem = review_elem.find("h3", class_="review-title")
+            title = title_elem.get_text(strip=True) if title_elem else None
+
+            body_elem = review_elem.find("div", class_="review-body")
+            review_text = body_elem.get_text(strip=True) if body_elem else None
+
+            date_elem = review_elem.find("span", class_="review-date")
+            date_raw = date_elem.get_text(strip=True) if date_elem else None
+            date = date_utils.parse_date(date_raw) if date_raw else None
+
+            rating_elem = review_elem.find("div", {"data-testid": "review-rating"})
+            rating = float(rating_elem.get("data-rating", 0)) if rating_elem else None
+
+            reviewer_elem = review_elem.find("span", class_="reviewer-name")
+            reviewer_name = reviewer_elem.get_text(strip=True) if reviewer_elem else None
+
+            verified_elem = review_elem.find("span", string="Verified")
+            verified = bool(verified_elem) if verified_elem else False
+
+            helpful_elem = review_elem.find("span", class_="helpful-count")
+            helpful_count = int(helpful_elem.get_text(strip=True)) if helpful_elem else 0
+
+            return {
+                "title": title,
+                "review": review_text,
+                "date": date,
+                "date_raw": date_raw,
+                "rating": rating,
+                "reviewer_name": reviewer_name,
+                "verified": verified,
+                "helpful_count": helpful_count
+            }
+        except Exception as e:
+            self.logger.error(f"Error extracting review: {e}")
+            return {}
+
+    def scrape(self, company: str, start_date: str, end_date: str, max_pages: int = 10) -> tuple[List[Dict[str, Any]], str]:
+        """Scrape reviews from G2."""
+        product_url = self._get_product_url(company)
+        if not product_url:
+            return [], ""
+
+        all_reviews = []
+        product_slug = company.lower().replace(" ", "-")
+        page = 1
+        while page <= max_pages:
+            url = f"{product_url}?page={page}"
             try:
-                next_button = driver.find_element(By.CSS_SELECTOR, ".next-page-button")  # G2 pagination
-                if "disabled" in next_button.get_attribute("class"):
+                response = self.session.get(url, timeout=10)
+                if response.status_code == 404:
+                    self.logger.info(f"No more pages for {company} on G2")
                     break
-                next_button.click()
-                time.sleep(2)  # Delay to avoid detection
-            except:
-                break
-        
-    except Exception as e:
-        print(f"Error scraping G2: {e}")
-        reviews = []
-    finally:
-        driver.quit()
-    
-    return reviews
+                if response.status_code == 429:
+                    self.logger.warning("Rate limited, waiting 60s")
+                    time.sleep(60)
+                    continue
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, 'html.parser')
 
-def parse_date(date_str):
-    """Parse various date formats to YYYY-MM-DD."""
-    try:
-        parsed = date_parser.parse(date_str)
-        return parsed.strftime("%Y-%m-%d")
-    except ValueError:
-        # Fallback for unparseable dates
-        return None  # Skip in main filter if None
+                review_elems = soup.find_all("div", class_="review-card")
+                if not review_elems:
+                    self.logger.info(f"No reviews found on page {page}")
+                    break
+
+                for elem in review_elems:
+                    review_data = self._extract_review(elem)
+                    if review_data:
+                        all_reviews.append(review_data)
+
+                self.logger.info(f"Scraped page {page} for {company} on G2: {len(review_elems)} reviews")
+                page += 1
+                time.sleep(5)  # Increased rate limiting
+
+            except requests.RequestException as e:
+                self.logger.error(f"Error scraping G2 page {page}: {e}")
+                break
+
+        # Filter by date
+        filtered_reviews = date_utils.filter_reviews_by_date(all_reviews, start_date, end_date)
+        self.logger.info(f"Filtered {len(filtered_reviews)} reviews for date range {start_date} to {end_date}")
+        return filtered_reviews, product_slug

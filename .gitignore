@@ -1,0 +1,15 @@
+# Virtual environment
+venv3/
+chrome-browser/
+drivers/
+chromedriver-win64.zip
+# Python cache
+__pycache__/
+*.pyc
+
+# Scraper output files
+*.json
+
+# Downloaded ChromeDriver
+chromedriver-win64.zip
+drivers/

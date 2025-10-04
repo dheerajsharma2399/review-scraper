@@ -1,0 +1,19 @@
+2025-09-30 19:49:50 - scraper - INFO - Output directory: test_output
+2025-09-30 19:49:50 - scraper - INFO - Starting scrape for g2
+2025-09-30 19:49:51 - scraper - ERROR - Error fetching G2 search: 403 Client Error: Forbidden for url: https://www.g2.com/search?query=Slack
+2025-09-30 19:49:51 - scraper - WARNING - No reviews found for g2
+2025-09-30 19:49:51 - scraper - INFO - Exported g2 to test_output\slack_g2_2024-01-01_to_2024-12-31.json
+2025-09-30 19:49:51 - scraper - INFO - Single source, no merge needed
+2025-09-30 19:49:51 - scraper - INFO - Scraping completed
+2025-09-30 19:50:15 - scraper - INFO - Output directory: test_output
+2025-09-30 19:50:15 - scraper - INFO - Starting scrape for g2
+2025-09-30 19:50:16 - scraper - ERROR - Error fetching G2 search: 403 Client Error: Forbidden for url: https://www.g2.com/search?query=Slack
+2025-09-30 19:50:16 - scraper - WARNING - No reviews found for g2
+2025-09-30 19:50:16 - scraper - INFO - Exported g2 to test_output\slack_g2_2024-01-01_to_2024-12-31.json
+2025-09-30 19:50:16 - scraper - INFO - Starting scrape for capterra
+2025-09-30 19:50:16 - scraper - ERROR - Error fetching Capterra search: 403 Client Error: Forbidden for url: https://www.capterra.com/search?query=Slack
+2025-09-30 19:50:16 - scraper - WARNING - No reviews found for capterra
+2025-09-30 19:50:16 - scraper - INFO - Exported capterra to test_output\slack_capterra_2024-01-01_to_2024-12-31.json
+2025-09-30 19:50:16 - scraper - INFO - Exported merged to test_output\slack_all_sources_2024-01-01_to_2024-12-31.json
+2025-09-30 19:50:16 - scraper - INFO - Total merged reviews: 0
+2025-09-30 19:50:16 - scraper - INFO - Scraping completed
